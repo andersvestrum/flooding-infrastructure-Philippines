@@ -3,3 +3,4 @@ matplotlib
 shapely
 pyproj
 osmnx
+gdown

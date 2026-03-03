@@ -5,25 +5,29 @@ from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
 import osmnx as ox
 import pandas as pd
+import os
+
+# Paths relative to project root
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Configuration
-MUNICIPALITY = "LipaCity"
-DISPLAY_NAME = "Lipa City"
+MUNICIPALITY = "TuguegaraoCity"
+DISPLAY_NAME = "Tuguegarao City"
 
 # Load data
 print("Loading flood hazard data...")
-flood_5yr = gpd.read_file("data/noah/5yr/Batangas/Batangas_Flood_5yr.shp")
+flood_5yr = gpd.read_file(os.path.join(ROOT, "data/noah/5yr/Cagayan/Cagayan_Flood_5year.shp"))
 
 print("Loading municipality boundaries...")
 ph_admin = gpd.read_file(
     "https://geodata.ucdavis.edu/gadm/gadm4.1/json/gadm41_PHL_2.json"
 )
 muni = ph_admin[
-    (ph_admin["NAME_1"] == "Batangas") & (ph_admin["NAME_2"] == MUNICIPALITY)
+    (ph_admin["NAME_1"] == "Cagayan") & (ph_admin["NAME_2"] == MUNICIPALITY)
 ]
 
 if muni.empty:
-    available = ph_admin[ph_admin["NAME_1"] == "Batangas"]["NAME_2"].sort_values().tolist()
+    available = ph_admin[ph_admin["NAME_1"] == "Cagayan"]["NAME_2"].sort_values().tolist()
     print(f"Municipality '{MUNICIPALITY}' not found. Available options:")
     for m in available:
         print(f"  - {m}")
@@ -207,7 +211,7 @@ ax.legend(
 )
 
 ax.set_title(
-    f"5-Year Flood Hazard, Roads & Critical Facilities\n{DISPLAY_NAME}, Batangas",
+    f"5-Year Flood Hazard, Roads & Critical Facilities\n{DISPLAY_NAME}, Cagayan",
     fontsize=14,
     fontweight="bold",
 )
@@ -239,7 +243,8 @@ ax.text(
 )
 
 plt.tight_layout()
-plt.savefig("output/batangas_poi_flood_5yr.png", dpi=200, bbox_inches="tight")
+os.makedirs(os.path.join(ROOT, "output"), exist_ok=True)
+plt.savefig(os.path.join(ROOT, "output/cagayan_poi_flood_5yr.png"), dpi=200, bbox_inches="tight")
 plt.show()
 
 # Print summary
@@ -256,4 +261,4 @@ for category in poi_queries:
     print(f"   Total:   {s['total']}")
     print(f"   Flooded: {s['flooded']} ({s['pct']:.0f}%)")
 print()
-print("Map saved to output/batangas_poi_flood_5yr.png")
+print("Map saved to output/cagayan_poi_flood_5year.png")

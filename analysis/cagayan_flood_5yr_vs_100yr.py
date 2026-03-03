@@ -2,18 +2,22 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
+import os
+
+# Paths relative to project root
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Load 5-year flood
-flood_5yr = gpd.read_file("data/noah/5yr/Batangas/Batangas_Flood_5yr.shp")
+flood_5yr = gpd.read_file(os.path.join(ROOT, "data/noah/5yr/Cagayan/Cagayan_Flood_5year.shp"))
 
 # Load 100-year flood
-flood_100yr = gpd.read_file("data/noah/100yr/Batangas/Batangas_Flood_100yr.shp")
+flood_100yr = gpd.read_file(os.path.join(ROOT, "data/noah/100yr/Cagayan/Cagayan_Flood_100year.shp"))
 
 # Load province/municipality boundaries from GADM (level 2 = municipalities)
 ph_admin = gpd.read_file(
     "https://geodata.ucdavis.edu/gadm/gadm4.1/json/gadm41_PHL_2.json"
 )
-batangas = ph_admin[ph_admin["NAME_1"] == "Batangas"]
+cagayan = ph_admin[ph_admin["NAME_1"] == "Cagayan"]
 
 # Hazard color map (yellow=low, orange=medium, red=high)
 hazard_cmap = ListedColormap(["#FFD700", "#FF8C00", "#CC0000"])
@@ -27,7 +31,7 @@ fig, axes = plt.subplots(1, 2, figsize=(16, 8))
 
 # --- Plot municipality borders as background on both axes ---
 for ax in axes:
-    batangas.boundary.plot(ax=ax, edgecolor="black", linewidth=0.5)
+    cagayan.boundary.plot(ax=ax, edgecolor="black", linewidth=0.5)
 
 flood_5yr.plot(
     column="Var",
@@ -68,7 +72,8 @@ fig.legend(
     frameon=True,
 )
 
-fig.suptitle("NOAH Flood Hazard Map — Batangas Province", fontsize=16, fontweight="bold")
+fig.suptitle("NOAH Flood Hazard Map — Cagayan Province", fontsize=16, fontweight="bold")
 plt.tight_layout(rect=[0, 0.08, 1, 0.95])
-plt.savefig("output/batangas_flood_hazard.png", dpi=200, bbox_inches="tight")
+os.makedirs(os.path.join(ROOT, "output"), exist_ok=True)
+plt.savefig(os.path.join(ROOT, "output/cagayan_flood_hazard.png"), dpi=200, bbox_inches="tight")
 plt.show()

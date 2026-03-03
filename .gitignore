@@ -1,7 +1,9 @@
 .venv/
 
-data/noah/5yr/*
-data/noah/100yr/*
+# Flood shapefiles (downloaded via download_data.py)
+data/noah/5yr/*/
+data/noah/100yr/*/
+data/downloads/
 
 cache/
 
