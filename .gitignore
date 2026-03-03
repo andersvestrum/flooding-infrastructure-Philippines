@@ -1,8 +1,10 @@
 .venv/
 
-data/
+data/noah/5yr/*
+data/noah/100yr/*
 
-output/
+cache/
+
 
 # Python
 __pycache__/

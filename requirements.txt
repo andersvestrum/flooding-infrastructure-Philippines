@@ -2,3 +2,4 @@ geopandas
 matplotlib
 shapely
 pyproj
+osmnx
