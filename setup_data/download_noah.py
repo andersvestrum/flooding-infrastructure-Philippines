@@ -35,7 +35,7 @@ PROVINCES = {
         "100yr": "1CfgJUqN6wv8wBG3Oiu2r-VR_lGk87V24",
     },
     "Agusan del Norte": {
-        "zip_name": "AgusanDelNorte",
+        "zip_name": "AgusandelNorte",
         "5yr":   None,
         "100yr": "1pIbz8VhHp8LoQNpDsWFk70uZpDBm9hki",
     },
@@ -47,7 +47,7 @@ PROVINCES = {
     "Pampanga": {
         "zip_name": "Pampanga",
         "5yr":   "1GWtqxt6xnEIkzd7NV-r9m8JmU4VJtbdV",
-        "100yr": None,
+        "100yr": "1ft-CaJiMGtDcaTu6At_s8qs-fSiDP8P3",
     },
     "Maguindanao": {
         "zip_name": "Maguindanao",
@@ -72,7 +72,7 @@ PROVINCES = {
     "Camarines Norte": {
         "zip_name": "CamarinesNorte",
         "5yr":   "1lWve3Uzs4UF3OyM3vthGGOFVBU4dnZfI",
-        "100yr": None,
+        "100yr": "1kteA0bFjBQKKE0UzEuR9wE_ljXU6c3Zh",
     },
     "Isabela": {
         "zip_name": "Isabela",

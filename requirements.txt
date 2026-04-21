@@ -3,4 +3,7 @@ matplotlib
 shapely
 pyproj
 osmnx
+scipy
 gdown
+datasets
+pyarrow
