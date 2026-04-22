@@ -64,15 +64,25 @@ GRID_M      = 250
 SAT_PRIORITY = ["s1", "s2", "rcm", "alos2", "k5", "gf3", "iceye", "nv1", "l9"]
 
 CITIES = [
-    {"name": "Tuguegarao",    "slug": "tuguegarao",    "lat": 17.6158, "lng": 121.7229,
-     "radius_m": 10_000, "noah_province": "Cagayan",             "region": "Cagayan Valley"},
-    {"name": "Dagupan",       "slug": "dagupan",        "lat": 16.0431, "lng": 120.3333,
-     "radius_m": 12_000, "noah_province": "Pangasinan",          "region": "Ilocos"},
-    {"name": "Manila",        "slug": "manila",         "lat": 14.5995, "lng": 120.9842,
+    {"name": "Manila",         "slug": "manila",         "lat": 14.5995, "lng": 120.9842,
      "radius_m": 20_000, "noah_province": "Metropolitan Manila", "region": "NCR"},
-    {"name": "Cagayan de Oro","slug": "cagayan_de_oro", "lat": 8.4772,  "lng": 124.6459,
-     "radius_m": 12_000, "noah_province": "Misamis Oriental",    "region": "Mindanao"},
-    {"name": "Cotabato",      "slug": "cotabato",       "lat": 7.2236,  "lng": 124.2464,
+    {"name": "San Fernando",   "slug": "san_fernando",   "lat": 15.0286, "lng": 120.6940,
+     "radius_m": 12_000, "noah_province": "Pampanga",            "region": "Central Luzon"},
+    {"name": "Dagupan",        "slug": "dagupan",        "lat": 16.0431, "lng": 120.3333,
+     "radius_m": 12_000, "noah_province": "Pangasinan",          "region": "Ilocos"},
+    {"name": "Naga",           "slug": "naga",           "lat": 13.6218, "lng": 123.1948,
+     "radius_m": 10_000, "noah_province": "Camarines Sur",       "region": "Bicol"},
+    {"name": "Daet",           "slug": "daet",           "lat": 14.1167, "lng": 122.9500,
+     "radius_m":  8_000, "noah_province": "Camarines Norte",     "region": "Bicol"},
+    {"name": "Cagayan de Oro", "slug": "cagayan_de_oro", "lat": 8.4772,  "lng": 124.6459,
+     "radius_m": 12_000, "noah_province": "Misamis Oriental",    "region": "Northern Mindanao"},
+    {"name": "Butuan",         "slug": "butuan",         "lat": 8.9515,  "lng": 125.5277,
+     "radius_m": 10_000, "noah_province": None,                  "region": "Caraga"},
+    {"name": "Tuguegarao",     "slug": "tuguegarao",     "lat": 17.6158, "lng": 121.7229,
+     "radius_m": 10_000, "noah_province": "Cagayan",             "region": "Cagayan Valley"},
+    {"name": "Ilagan",         "slug": "ilagan",         "lat": 17.1485, "lng": 121.8892,
+     "radius_m": 10_000, "noah_province": "Isabela",             "region": "Cagayan Valley"},
+    {"name": "Cotabato",       "slug": "cotabato",       "lat": 7.2236,  "lng": 124.2464,
      "radius_m": 10_000, "noah_province": "Maguindanao",         "region": "BARMM"},
 ]
 
@@ -85,7 +95,10 @@ DIFF_COLORS = {
     "philsa_higher":      "#FDAE61",
     "philsa_much_higher": "#B2182B",
 }
-CITY_COLORS = ["#1565C0", "#2E7D32", "#6A1B9A", "#E65100", "#B71C1C"]
+CITY_COLORS = [
+    "#1565C0", "#2E7D32", "#6A1B9A", "#E65100", "#B71C1C",
+    "#00796B", "#F57C00", "#37474F", "#880E4F", "#1B5E20",
+]
 
 
 # ===========================================================================
@@ -130,6 +143,8 @@ def load_all_philsa():
 
 
 def _find_noah_shp(province):
+    if not province:
+        return None
     camel = province.replace(" ", "")
     for folder in [province, camel, camel.lower()]:
         base = os.path.join(NOAH_BASE, folder)
@@ -340,13 +355,16 @@ for city in CITIES:
     match_share         = float(np.mean(p_cls_safe == n_cls))
     noah_higher_share   = float(np.mean(n_cls > p_cls_safe))
 
+    philsa_freq = philsa_count / max(n_philsa_events, 1)
+
     pts_wgs = pts.to_crs(epsg=4326)
     plot_df = pd.DataFrame({
-        "lon":       pts_wgs.geometry.x,
-        "lat":       pts_wgs.geometry.y,
-        "noah_cls":  noah_cls,
+        "lon":        pts_wgs.geometry.x,
+        "lat":        pts_wgs.geometry.y,
+        "noah_cls":   noah_cls,
         "philsa_cls": np.where(philsa_cls == -1, 0, philsa_cls),
-        "is_water":  water_mask,
+        "philsa_freq": philsa_freq,
+        "is_water":   water_mask,
         "diff_bucket": [
             "water" if water_mask[i]
             else _diff_bucket(
@@ -404,9 +422,21 @@ csv_path   = os.path.join(OUT_DIR, "noah_philsa_allfiles_summary.csv")
 summary_df.to_csv(csv_path, index=False)
 print(f"\n  Saved → {csv_path}", flush=True)
 
+# Per-cell parquet (used by noah_source_scatter.py)
+all_cell_frames = []
+for city in CITIES:
+    d  = city_data[city["slug"]]
+    df = d["plot_df"].copy()
+    df["city"] = city["name"]
+    all_cell_frames.append(df[["city", "lon", "lat", "noah_cls", "philsa_freq", "is_water"]])
+cells_df   = pd.concat(all_cell_frames, ignore_index=True)
+cells_path = os.path.join(OUT_DIR, "noah_philsa_allfiles_cells.parquet")
+cells_df.to_parquet(cells_path, index=False)
+print(f"  Saved → {cells_path}", flush=True)
+
 
 # ===========================================================================
-# Figure 1 — 5-city × 4-panel maps
+# Figure 1 — maps
 # ===========================================================================
 print("\nRendering Figure 1 (maps)…", flush=True)
 

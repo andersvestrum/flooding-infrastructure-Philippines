@@ -77,14 +77,24 @@ OVERLAP_WINDOWS = [
 ]
 
 CITIES = [
-    {"name": "Tuguegarao",     "slug": "tuguegarao",    "lat": 17.6158, "lng": 121.7229,
-     "radius_m": 10_000, "noah_province": "Cagayan",             "region": "Cagayan Valley"},
-    {"name": "Dagupan",        "slug": "dagupan",        "lat": 16.0431, "lng": 120.3333,
-     "radius_m": 12_000, "noah_province": "Pangasinan",          "region": "Ilocos"},
     {"name": "Manila",         "slug": "manila",         "lat": 14.5995, "lng": 120.9842,
      "radius_m": 20_000, "noah_province": "Metropolitan Manila", "region": "NCR"},
+    {"name": "San Fernando",   "slug": "san_fernando",   "lat": 15.0286, "lng": 120.6940,
+     "radius_m": 12_000, "noah_province": "Pampanga",            "region": "Central Luzon"},
+    {"name": "Dagupan",        "slug": "dagupan",        "lat": 16.0431, "lng": 120.3333,
+     "radius_m": 12_000, "noah_province": "Pangasinan",          "region": "Ilocos"},
+    {"name": "Naga",           "slug": "naga",           "lat": 13.6218, "lng": 123.1948,
+     "radius_m": 10_000, "noah_province": "Camarines Sur",       "region": "Bicol"},
+    {"name": "Daet",           "slug": "daet",           "lat": 14.1167, "lng": 122.9500,
+     "radius_m":  8_000, "noah_province": "Camarines Norte",     "region": "Bicol"},
     {"name": "Cagayan de Oro", "slug": "cagayan_de_oro", "lat": 8.4772,  "lng": 124.6459,
-     "radius_m": 12_000, "noah_province": "Misamis Oriental",    "region": "Mindanao"},
+     "radius_m": 12_000, "noah_province": "Misamis Oriental",    "region": "Northern Mindanao"},
+    {"name": "Butuan",         "slug": "butuan",         "lat": 8.9515,  "lng": 125.5277,
+     "radius_m": 10_000, "noah_province": None,                  "region": "Caraga"},
+    {"name": "Tuguegarao",     "slug": "tuguegarao",     "lat": 17.6158, "lng": 121.7229,
+     "radius_m": 10_000, "noah_province": "Cagayan",             "region": "Cagayan Valley"},
+    {"name": "Ilagan",         "slug": "ilagan",         "lat": 17.1485, "lng": 121.8892,
+     "radius_m": 10_000, "noah_province": "Isabela",             "region": "Cagayan Valley"},
     {"name": "Cotabato",       "slug": "cotabato",       "lat": 7.2236,  "lng": 124.2464,
      "radius_m": 10_000, "noah_province": "Maguindanao",         "region": "BARMM"},
 ]
@@ -106,7 +116,10 @@ CONSENSUS_COLORS = {
     "low":       "#E8E8E8",
     "water":     WATER_COLOR,
 }
-CITY_COLORS = ["#1565C0", "#2E7D32", "#6A1B9A", "#E65100", "#B71C1C"]
+CITY_COLORS = [
+    "#1565C0", "#2E7D32", "#6A1B9A", "#E65100", "#B71C1C",
+    "#00796B", "#F57C00", "#37474F", "#880E4F", "#1B5E20",
+]
 WINDOW_COLORS = ["#1976D2", "#388E3C", "#7B1FA2", "#F57C00", "#D32F2F", "#00838F"]
 
 
@@ -132,6 +145,8 @@ def _build_grid(city):
 
 
 def _find_noah_shp(province):
+    if not province:
+        return None
     camel = province.replace(" ", "")
     for folder in [province, camel, camel.lower()]:
         base = os.path.join(NOAH_BASE, folder)

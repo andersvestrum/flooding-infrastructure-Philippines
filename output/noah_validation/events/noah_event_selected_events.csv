@@ -1,0 +1,9 @@
+event,event_name,n_flooded_total,n_flooded_gfd,n_flooded_ai4g,n_flooded_philsa,n_cities_with_20plus_cells,plot_order,selection_rule
+sendong_2011,Sendong (Dec 2011),4755,4755,0,0,10,1,"Major named event with substantial observed flood support; selected before NOAH capture-rate interpretation to balance time period, source coverage, and plot legibility."
+lando_2015,Lando (Oct 2015),5074,4668,761,0,8,2,"Major named event with substantial observed flood support; selected before NOAH capture-rate interpretation to balance time period, source coverage, and plot legibility."
+lawin_2016,Lawin (Oct 2016),2264,0,2264,0,4,3,"Major named event with substantial observed flood support; selected before NOAH capture-rate interpretation to balance time period, source coverage, and plot legibility."
+ompong_2018,Ompong (Sep 2018),1627,0,1627,0,7,4,"Major named event with substantial observed flood support; selected before NOAH capture-rate interpretation to balance time period, source coverage, and plot legibility."
+vamco_2020,Vamco (Nov 2020),6008,0,6008,0,7,5,"Major named event with substantial observed flood support; selected before NOAH capture-rate interpretation to balance time period, source coverage, and plot legibility."
+egay_2023,Egay (Jul 2023),1757,0,1248,549,6,6,"Major named event with substantial observed flood support; selected before NOAH capture-rate interpretation to balance time period, source coverage, and plot legibility."
+kristine_2024,Kristine (Oct 2024),2420,0,0,2420,6,7,"Major named event with substantial observed flood support; selected before NOAH capture-rate interpretation to balance time period, source coverage, and plot legibility."
+crising_2025,Crising (Jul 2025),5043,0,0,5043,8,8,"Major named event with substantial observed flood support; selected before NOAH capture-rate interpretation to balance time period, source coverage, and plot legibility."
