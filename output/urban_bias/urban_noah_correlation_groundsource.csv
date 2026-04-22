@@ -1,0 +1,9 @@
+,urban_share,noah_active_share,noah_active_urban_share,active_cells_sat_gap_share,active_cells_with_hot_philsa_share,active_cells_with_hot_groundsource_share,philsa_spearman_noah_vs_count,groundsource_spearman_noah_vs_score
+urban_share,1.0,-0.1,0.9,0.5,-0.5,0.7,-0.5,0.7
+noah_active_share,-0.1,1.0,-0.3,-0.7,0.7,-0.4,0.7,-0.6
+noah_active_urban_share,0.9,-0.3,1.0,0.8,-0.8,0.9,-0.8,0.9
+active_cells_sat_gap_share,0.5,-0.7,0.8,1.0,-1.0,0.9,-1.0,0.9
+active_cells_with_hot_philsa_share,-0.5,0.7,-0.8,-1.0,1.0,-0.9,1.0,-0.9
+active_cells_with_hot_groundsource_share,0.7,-0.4,0.9,0.9,-0.9,1.0,-0.9,0.8
+philsa_spearman_noah_vs_count,-0.5,0.7,-0.8,-1.0,1.0,-0.9,1.0,-0.9
+groundsource_spearman_noah_vs_score,0.7,-0.6,0.9,0.9,-0.9,0.8,-0.9,1.0

@@ -70,14 +70,24 @@ GRID_M = 250
 NOAH_ACTIVE_CLASS = 2   # Var ≥ 2 (Medium or High) counts as "NOAH active"
 
 CITIES = [
-    {"name": "Tuguegarao",     "slug": "tuguegarao",    "lat": 17.6158, "lng": 121.7229,
-     "radius_m": 10_000, "noah_province": "Cagayan",             "region": "Cagayan Valley"},
-    {"name": "Dagupan",        "slug": "dagupan",        "lat": 16.0431, "lng": 120.3333,
-     "radius_m": 12_000, "noah_province": "Pangasinan",          "region": "Ilocos"},
     {"name": "Manila",         "slug": "manila",         "lat": 14.5995, "lng": 120.9842,
      "radius_m": 20_000, "noah_province": "Metropolitan Manila", "region": "NCR"},
+    {"name": "San Fernando",   "slug": "san_fernando",   "lat": 15.0286, "lng": 120.6940,
+     "radius_m": 12_000, "noah_province": "Pampanga",            "region": "Central Luzon"},
+    {"name": "Dagupan",        "slug": "dagupan",        "lat": 16.0431, "lng": 120.3333,
+     "radius_m": 12_000, "noah_province": "Pangasinan",          "region": "Ilocos"},
+    {"name": "Naga",           "slug": "naga",           "lat": 13.6218, "lng": 123.1948,
+     "radius_m": 10_000, "noah_province": "Camarines Sur",       "region": "Bicol"},
+    {"name": "Daet",           "slug": "daet",           "lat": 14.1167, "lng": 122.9500,
+     "radius_m":  8_000, "noah_province": "Camarines Norte",     "region": "Bicol"},
     {"name": "Cagayan de Oro", "slug": "cagayan_de_oro", "lat": 8.4772,  "lng": 124.6459,
-     "radius_m": 12_000, "noah_province": "Misamis Oriental",    "region": "Mindanao"},
+     "radius_m": 12_000, "noah_province": "Misamis Oriental",    "region": "Northern Mindanao"},
+    {"name": "Butuan",         "slug": "butuan",         "lat": 8.9515,  "lng": 125.5277,
+     "radius_m": 10_000, "noah_province": None,                  "region": "Caraga"},
+    {"name": "Tuguegarao",     "slug": "tuguegarao",     "lat": 17.6158, "lng": 121.7229,
+     "radius_m": 10_000, "noah_province": "Cagayan",             "region": "Cagayan Valley"},
+    {"name": "Ilagan",         "slug": "ilagan",         "lat": 17.1485, "lng": 121.8892,
+     "radius_m": 10_000, "noah_province": "Isabela",             "region": "Cagayan Valley"},
     {"name": "Cotabato",       "slug": "cotabato",       "lat": 7.2236,  "lng": 124.2464,
      "radius_m": 10_000, "noah_province": "Maguindanao",         "region": "BARMM"},
 ]
@@ -102,7 +112,10 @@ CONSENSUS_COLORS = {
     "water":     WATER_COLOR,
 }
 
-CITY_COLORS = ["#1565C0", "#2E7D32", "#6A1B9A", "#E65100", "#B71C1C"]
+CITY_COLORS = [
+    "#1565C0", "#2E7D32", "#6A1B9A", "#E65100", "#B71C1C",
+    "#00796B", "#F57C00", "#37474F", "#880E4F", "#1B5E20",
+]
 
 
 # ===========================================================================
@@ -120,33 +133,44 @@ def _tile_name(lat, lon):
 
 def load_ai4g_philippines():
     """
-    Download the per-tile Parquet files from HuggingFace for all tiles that
-    cover the five study cities.  Returns a DataFrame with columns:
-      date (datetime64), lat, lon.
+    Download per-tile Parquet files from HuggingFace for all tiles that cover
+    the study cities.  Returns a DataFrame with columns: date, lat, lon, tile.
 
-    A local cache at data/ai4g/philippines_floods.parquet is written so
-    subsequent runs skip the download.
+    Cache strategy: the combined parquet is stored at CACHE_PATH.  If all
+    required tiles are already in the cache, it is loaded directly.  If new
+    cities require additional tiles, only the missing tiles are downloaded and
+    the cache is updated.
     """
-    if os.path.exists(CACHE_PATH):
-        print(f"  Loading cached AI4G data from {CACHE_PATH} …", flush=True)
-        df = pd.read_parquet(CACHE_PATH)
-        print(f"  {len(df):,} detections | {df['date'].nunique()} unique dates "
-              f"| {df['tile'].nunique()} tile(s)", flush=True)
-        return df
-
     try:
         from huggingface_hub import hf_hub_download
     except ImportError:
         raise ImportError("huggingface_hub is required: pip install huggingface_hub")
 
-    # Unique tiles needed
+    # Unique tiles needed for current CITIES list
     tiles_needed = set()
     for city in CITIES:
         tiles_needed.add(_tile_name(city["lat"], city["lng"]))
     print(f"  Tiles needed: {sorted(tiles_needed)}", flush=True)
 
-    parts = []
-    for tile in sorted(tiles_needed):
+    # Load existing cache if present; check which tiles are already there
+    cached_tiles = set()
+    existing_df  = None
+    if os.path.exists(CACHE_PATH):
+        existing_df  = pd.read_parquet(CACHE_PATH)
+        cached_tiles = set(existing_df["tile"].unique())
+        print(f"  Cache hit: {sorted(cached_tiles)} ({len(existing_df):,} rows)", flush=True)
+
+    missing_tiles = tiles_needed - cached_tiles
+    if not missing_tiles:
+        df = existing_df
+        print(f"  {len(df):,} detections | {df['date'].nunique()} unique dates "
+              f"| {df['tile'].nunique()} tile(s)", flush=True)
+        return df
+
+    print(f"  Downloading missing tile(s): {sorted(missing_tiles)}", flush=True)
+    parts = [existing_df] if existing_df is not None else []
+
+    for tile in sorted(missing_tiles):
         lat_prefix = tile[:3]   # e.g. "N15"
         repo_path  = f"{lat_prefix}/{tile}/{tile}-post-processing.parquet"
         print(f"  Downloading {repo_path} …", end=" ", flush=True)
@@ -172,11 +196,11 @@ def load_ai4g_philippines():
         parts.append(df_tile[["date", "lat", "lon", "tile"]])
 
     if not parts:
-        raise RuntimeError("No AI4G tiles downloaded successfully.")
+        raise RuntimeError("No AI4G tiles available.")
 
     df = pd.concat(parts, ignore_index=True)
     df.to_parquet(CACHE_PATH, index=False)
-    print(f"  Cached → {CACHE_PATH}  ({len(df):,} rows after FP filter)", flush=True)
+    print(f"  Updated cache → {CACHE_PATH}  ({len(df):,} rows after FP filter)", flush=True)
     return df
 
 
@@ -204,6 +228,8 @@ def _build_grid(city):
 
 
 def _find_noah_shp(province):
+    if not province:
+        return None
     camel = province.replace(" ", "")
     for folder in [province, camel, camel.lower()]:
         base = os.path.join(NOAH_BASE, folder)
@@ -507,6 +533,18 @@ csv_path   = os.path.join(OUT_DIR, "noah_ai4g_summary.csv")
 summary_df.to_csv(csv_path, index=False)
 print(f"\n  Saved → {csv_path}", flush=True)
 
+# Per-cell parquet (used by noah_source_scatter.py)
+all_cell_frames = []
+for city in CITIES:
+    d = city_data[city["slug"]]
+    df = d["plot_df"].copy()
+    df["city"] = city["name"]
+    all_cell_frames.append(df[["city", "lon", "lat", "noah_cls", "ai4g_freq", "is_water"]])
+cells_df   = pd.concat(all_cell_frames, ignore_index=True)
+cells_path = os.path.join(OUT_DIR, "noah_ai4g_cells.parquet")
+cells_df.to_parquet(cells_path, index=False)
+print(f"  Saved → {cells_path}", flush=True)
+
 
 # ===========================================================================
 # Figure 1 — 5-city × 5-panel maps
@@ -525,8 +563,8 @@ freq_cmap = plt.cm.YlOrRd
 
 fig1, axes1 = plt.subplots(
     len(CITIES), 5,
-    figsize=(20.0, 3.25 * len(CITIES)),
-    gridspec_kw={"width_ratios": [0.60, 1.0, 1.0, 1.0, 1.0]},
+    figsize=(21.0, 2.90 * len(CITIES)),
+    gridspec_kw={"width_ratios": [0.58, 1.0, 1.0, 1.0, 1.0]},
 )
 fig1.patch.set_facecolor("#F7F7F7")
 fig1.suptitle(
@@ -696,7 +734,7 @@ print(f"  Saved → {p1}", flush=True)
 # ===========================================================================
 # Figure 2 — Diagnostics
 # ===========================================================================
-fig2, axes2 = plt.subplots(2, 3, figsize=(15, 8))
+fig2, axes2 = plt.subplots(2, 3, figsize=(18, 9))
 fig2.patch.set_facecolor("#F7F7F7")
 fig2.suptitle("NOAH 5-yr vs AI4G Sentinel-1 — Diagnostic Statistics",
               fontsize=12, fontweight="bold")
@@ -725,7 +763,7 @@ within_vals = [city_data[c["slug"]]["within_one"] for c in CITIES]
 ax.bar(x - bar_w / 2, exact_vals,  bar_w, label="Exact match", color="#1976D2", alpha=0.85)
 ax.bar(x + bar_w / 2, within_vals, bar_w, label="Within ±1",   color="#66BB6A", alpha=0.85)
 ax.set_xticks(x)
-ax.set_xticklabels(city_names, rotation=20, ha="right", fontsize=8)
+ax.set_xticklabels(city_names, rotation=30, ha="right", fontsize=7.5)
 ax.set_ylim(0, 1)
 ax.set_ylabel("Fraction of cells")
 ax.set_title("Class agreement (NOAH vs AI4G tertile)", fontweight="bold")
@@ -737,7 +775,7 @@ ax = axes2[0, 2]
 rho_vals = [city_data[c["slug"]]["spearman"] for c in CITIES]
 bars = ax.bar(x, rho_vals, color=CITY_COLORS, alpha=0.85)
 ax.set_xticks(x)
-ax.set_xticklabels(city_names, rotation=20, ha="right", fontsize=8)
+ax.set_xticklabels(city_names, rotation=30, ha="right", fontsize=7.5)
 ax.set_title("Spearman ρ (NOAH class vs AI4G flood count)", fontweight="bold")
 ax.set_ylabel("ρ")
 ax.set_ylim(-1, 1)
@@ -765,7 +803,7 @@ emp_b = [m + e for m, e in zip(mod_b, emp_vals)]
 ax.bar(x, low_vals, color=CONSENSUS_COLORS["low"], alpha=0.85, label="Low risk",
        bottom=emp_b, edgecolor="#aaa", linewidth=0.5)
 ax.set_xticks(x)
-ax.set_xticklabels(city_names, rotation=20, ha="right", fontsize=8)
+ax.set_xticklabels(city_names, rotation=30, ha="right", fontsize=7.5)
 ax.set_ylim(0, 1)
 ax.set_ylabel("Fraction of valid cells")
 ax.set_title("Consensus risk share", fontweight="bold")
