@@ -2,10 +2,10 @@
 noah_event_validation.py
 ========================
 Event-specific validation: compare NOAH 5-yr hazard zones against SAR-detected
-flood extents during specific major Philippine typhoon events.
+flood extents during specific major Philippine flood events.
 
 Unlike noah_ai4g_comparison.py (which compares flood *frequency* over 10 years),
-this script asks: during a specific named storm, did flooding occur where NOAH
+this script asks: during a specific named flood event, did flooding occur where NOAH
 predicted it? This is a more direct spatial test of NOAH's predictive accuracy.
 
 Sources
@@ -43,7 +43,10 @@ Outputs
 -------
   output/noah_validation/events/noah_event_01_distribution.png
   output/noah_validation/events/noah_event_02_heatmap.png
+  output/noah_validation/events/noah_event_03_source_heatmaps.png
+  output/noah_validation/events/noah_event_04_source_scatter.png
   output/noah_validation/events/noah_event_summary.csv
+  output/noah_validation/events/noah_event_source_scatter_points.csv
   output/noah_validation/events/noah_event_selected_events.csv
 """
 
@@ -90,9 +93,20 @@ CACHE_PATH = os.path.join(AI4G_DIR, "philippines_floods.parquet")
 
 UTM    = 32651
 GRID_M = 250
+CELL_AREA_KM2 = (GRID_M * GRID_M) / 1e6
+AI4G_START = pd.Timestamp("2014-10-01")
+AI4G_END   = pd.Timestamp("2024-09-30")
+PHILSA_START = pd.Timestamp("2022-08-05")
+PHILSA_END   = pd.Timestamp("2026-02-09")
+
+SOURCE_META = [
+    {"key": "gfd", "label": "GFD / MODIS", "color": "#6A1B9A", "cmap": "Purples"},
+    {"key": "ai4g", "label": "AI4G / Sentinel-1", "color": "#1565C0", "cmap": "Blues"},
+    {"key": "philsa", "label": "PhilSA / SAR", "color": "#E65100", "cmap": "Oranges"},
+]
 
 # ---------------------------------------------------------------------------
-# Typhoon events
+# Major flood events
 # gfd_ids: Global Flood Database DFO event IDs (pre-2014, MODIS-based)
 # start/end: used for AI4G + PhilSA filtering (post-2014 only)
 # ---------------------------------------------------------------------------
@@ -249,7 +263,7 @@ EVENTS = [
 # Main-paper plotting subset.
 #
 # Decision rule, set before looking at NOAH capture rates:
-# - keep major named Philippine flood/typhoon events with substantial observed
+# - keep major named Philippine flood events with substantial observed
 #   flood support in the city-grid sample;
 # - preserve temporal/source coverage across GFD, AI4G, and PhilSA eras;
 # - avoid zero-detection, near-duplicate, or sequence-heavy events that make the
@@ -286,7 +300,7 @@ CITIES = [
     {"name": "Cagayan de Oro", "slug": "cagayan_de_oro", "lat": 8.4772,  "lng": 124.6459,
      "radius_m": 12_000, "noah_province": "Misamis Oriental",    "region": "Northern Mindanao"},
     {"name": "Butuan",         "slug": "butuan",         "lat": 8.9515,  "lng": 125.5277,
-     "radius_m": 10_000, "noah_province": None,                  "region": "Caraga"},
+     "radius_m": 10_000, "noah_province": "Agusan del Norte",    "region": "Caraga"},
     {"name": "Cotabato",       "slug": "cotabato",       "lat": 7.2236,  "lng": 124.2464,
      "radius_m": 10_000, "noah_province": "Maguindanao",         "region": "BARMM"},
 ]
@@ -541,7 +555,7 @@ def load_philsa():
 # ===========================================================================
 
 print("=" * 72)
-print("NOAH 5-yr — Event-Specific Validation (Typhoon Events)")
+print("NOAH 5-yr — Event-Specific Validation (Major Flood Events)")
 print("=" * 72)
 
 print("\n[1/4] Loading AI4G cache…")
@@ -570,7 +584,7 @@ for city in CITIES:
             noah = noah.set_crs(epsg=4326)
         if noah.crs.to_epsg() != UTM:
             noah = noah.to_crs(epsg=UTM)
-        noah["Var"] = pd.to_numeric(noah["Var"], errors="coerce").fillna(0).astype(int)
+        noah["Var"] = pd.to_numeric(noah["Var"], errors="coerce").fillna(0).clip(lower=0).astype(int)
         noah = gpd.clip(noah[["Var", "geometry"]], buf)
         noah = noah[~noah.is_empty].copy()
     else:
@@ -602,6 +616,8 @@ for event in EVENTS:
 
     gfd_ids = event.get("gfd_ids", [])
     use_gfd = len(gfd_ids) > 0
+    ai4g_available = (t1 >= AI4G_START) and (t0 <= AI4G_END)
+    philsa_available = (t1 >= PHILSA_START) and (t0 <= PHILSA_END)
 
     # Filter AI4G to event window (post-2014 events only)
     ai4g_ev = ai4g_all[(ai4g_all["date"] >= t0) & (ai4g_all["date"] <= t1)].copy()
@@ -658,11 +674,22 @@ for event in EVENTS:
 
         # Metrics vs NOAH (only cities with NOAH data)
         n_city_cells = len(pts)
+        n_noah_any = int((noah_cls > 0).sum())
         n_noah_high = int((noah_cls == 3).sum())
         n_noah_active = int((noah_cls >= 2).sum())   # Medium + High
+        n_flooded_in_noah_any = int((flood_union & (noah_cls > 0)).sum())
         n_flooded_in_noah_active = int(dist[2] + dist[3])
+        n_gfd_in_noah_any = int((flood_gfd & (noah_cls > 0)).sum())
+        n_ai4g_in_noah_any = int((flood_ai4g & (noah_cls > 0)).sum())
+        n_philsa_in_noah_any = int((flood_philsa & (noah_cls > 0)).sum())
 
         if n_flooded >= MIN_FLOODED_CELLS and cg["has_noah"]:
+            # Hazard hit rate: % of all NOAH hazard cells (Low+Medium+High)
+            # that were flooded during the event.
+            hazard_hit_rate = (
+                float(n_flooded_in_noah_any) / n_noah_any
+                if n_noah_any > 0 else float("nan")
+            )
             # Hit rate: % of NOAH High cells that were flooded
             hit_rate = (
                 float((flood_union & (noah_cls == 3)).sum()) / n_noah_high
@@ -673,26 +700,47 @@ for event in EVENTS:
                 float((flood_union & (noah_cls >= 2)).sum()) / n_noah_active
                 if n_noah_active > 0 else float("nan")
             )
-            # Observed-flood recall / capture:
-            # % of detected flooded cells that fall inside NOAH Medium+High zones.
+            # Observed-flood recall:
+            # % of detected flooded cells that fall inside any NOAH hazard cell
+            # (Low + Medium + High) within the fixed city buffer.
             capture_rate = (
+                float(n_flooded_in_noah_any) / n_flooded if n_flooded > 0 else float("nan")
+            )
+            # Stricter version restricted to Medium + High.
+            capture_rate_active = (
                 float(n_flooded_in_noah_active) / n_flooded if n_flooded > 0 else float("nan")
+            )
+            city_region_share_flood_inside_noah_any = (
+                float(n_flooded_in_noah_any) / n_city_cells if n_city_cells > 0 else float("nan")
             )
             city_region_share_flood_inside_noah_active = (
                 float(n_flooded_in_noah_active) / n_city_cells if n_city_cells > 0 else float("nan")
             )
         else:
-            hit_rate = active_hit_rate = capture_rate = float("nan")
+            hazard_hit_rate = hit_rate = active_hit_rate = capture_rate = capture_rate_active = float("nan")
+            city_region_share_flood_inside_noah_any = float("nan")
             city_region_share_flood_inside_noah_active = float("nan")
 
         results[event["slug"]][city["slug"]] = {
             "n_flooded":       n_flooded,
             "n_ai4g":          int(flood_ai4g.sum()),
             "n_philsa":        int(flood_philsa.sum()),
+            "n_gfd":           int(flood_gfd.sum()),
+            "n_noah_any":      n_noah_any,
+            "n_in_noah_any":   n_flooded_in_noah_any,
+            "n_gfd_in_noah_any": int(n_gfd_in_noah_any),
+            "n_ai4g_in_noah_any": int(n_ai4g_in_noah_any),
+            "n_philsa_in_noah_any": int(n_philsa_in_noah_any),
+            "gfd_available":   bool(use_gfd),
+            "ai4g_available":  bool(ai4g_available),
+            "philsa_available": bool(philsa_available),
             "dist":            dist,
+            "hazard_hit_rate": hazard_hit_rate,
             "hit_rate":        hit_rate,
             "active_hit_rate": active_hit_rate,
             "capture_rate":    capture_rate,
+            "capture_rate_active": capture_rate_active,
+            "city_region_share_flood_inside_noah_any": city_region_share_flood_inside_noah_any,
             "city_region_share_flood_inside_noah_active": city_region_share_flood_inside_noah_active,
             "has_noah":        cg["has_noah"],
             "is_primary":      city["name"] in event["primary"],
@@ -712,18 +760,30 @@ for event in EVENTS:
             "is_primary":       city["name"] in event["primary"],
             "has_noah":         cg["has_noah"],
             "n_city_cells":     n_city_cells,
+            "n_noah_any_cells": n_noah_any,
             "n_noah_active_cells": n_noah_active,
             "n_flooded_total":  n_flooded,
             "n_flooded_gfd":    int(flood_gfd.sum()),
             "n_flooded_ai4g":   int(flood_ai4g.sum()),
             "n_flooded_philsa": int(flood_philsa.sum()),
+            "n_flooded_gfd_in_noah_any": int(n_gfd_in_noah_any),
+            "n_flooded_ai4g_in_noah_any": int(n_ai4g_in_noah_any),
+            "n_flooded_philsa_in_noah_any": int(n_philsa_in_noah_any),
+            "gfd_available":    bool(use_gfd),
+            "ai4g_available":   bool(ai4g_available),
+            "philsa_available": bool(philsa_available),
             "n_in_noah_none":   dist[0],
             "n_in_noah_low":    dist[1],
             "n_in_noah_med":    dist[2],
             "n_in_noah_high":   dist[3],
+            "n_flooded_in_noah_any": n_flooded_in_noah_any,
             "n_flooded_in_noah_active": n_flooded_in_noah_active,
+            "hazard_hit_rate":  hazard_hit_rate,
             "capture_rate":     capture_rate,
-            "observed_flood_recall_noah_active": capture_rate,
+            "observed_flood_recall_noah_any": capture_rate,
+            "capture_rate_active": capture_rate_active,
+            "observed_flood_recall_noah_active": capture_rate_active,
+            "city_region_share_flood_inside_noah_any": city_region_share_flood_inside_noah_any,
             "city_region_share_flood_inside_noah_active": city_region_share_flood_inside_noah_active,
             "hit_rate_high":    hit_rate,
             "active_hit_rate":  active_hit_rate,
@@ -771,9 +831,9 @@ fig1, axes1 = plt.subplots(
 )
 fig1.patch.set_facecolor("#F7F7F7")
 fig1.suptitle(
-    "Where Did Typhoon Flooding Fall Relative to NOAH 5-yr Hazard Classes?\n"
-    "Selected major events: distribution of detected flooded cells across NOAH hazard zones",
-    fontsize=13, fontweight="bold", y=1.01,
+    "Where Did Major Flooding Fall Relative to NOAH 5-yr Hazard Classes?\n"
+    "Selected major flood events: distribution of detected flooded cells across NOAH hazard zones",
+    fontsize=13, fontweight="bold", y=1.005,
 )
 
 event_names_short = [e["name"] for e in PLOT_EVENTS]
@@ -798,9 +858,6 @@ for ci, city in enumerate(CITIES):
         has_any_data = True
         dist   = r["dist"]
         fracs  = [dist[k] / n for k in [0, 1, 2, 3]]
-        x_base = np.arange(4)
-        x_pos  = x_base + x_offsets[ei]
-
         # Draw stacked bar per NOAH class
         bottom = 0.0
         for ki, k in enumerate([0, 1, 2, 3]):
@@ -825,14 +882,10 @@ for ci, city in enumerate(CITIES):
                     )
             bottom += height
 
-        # Annotate observed-flood recall and sample size at top.
-        recall = r["capture_rate"]
-        recall_label = f"R={recall:.0%}" if not np.isnan(recall) else "R=n/a"
         ax.text(
-            ei, 1.025, f"{recall_label}\nn={n}",
+            ei, 1.025, f"n={n}",
             ha="center", va="bottom",
-            fontsize=5.8, color=EVENT_COLORS[ei],
-            linespacing=0.9,
+            fontsize=5.6, color=EVENT_COLORS[ei],
         )
 
     ax.set_title(
@@ -875,8 +928,7 @@ fig1.legend(handles=legend_handles, loc="lower center", ncol=4,
             fontsize=9, framealpha=0.92, bbox_to_anchor=(0.5, -0.03))
 fig1.text(
     0.5, -0.055,
-    f"Each bar = one selected typhoon event. Height = fraction of detected flooded 250m cells falling in that NOAH class. "
-    f"R = observed-flood recall = flooded cells in NOAH Medium+High divided by all observed flooded cells within the fixed city buffer. "
+    f"Each bar = one selected major flood event. Height = fraction of detected flooded 250m cells falling in that NOAH class. "
     f"AI4G (Sentinel-1, 2014–2024) + PhilSA (2022–2026) union. Events with < {MIN_FLOODED_CELLS} detected cells excluded. "
     f"Full 18-event table is retained in CSV; plot subset chosen by pre-defined event/source/legibility rule. "
     f"Primary city for each event marked (*) in data. Permanent water not masked here.",
@@ -895,8 +947,8 @@ print(f"  Saved → {p1}")
 # ===========================================================================
 
 # Two heatmaps side by side:
-#   Left:  capture_rate = % of detected flooding in NOAH Medium+High
-#   Right: active_hit_rate = % of NOAH Medium+High cells that were flooded
+#   Left:  capture_rate = % of detected flooding in any NOAH hazard cell
+#   Right: hazard_hit_rate = % of NOAH hazard cells that were flooded
 
 n_ev = len(PLOT_EVENTS)
 fig2, axes2 = plt.subplots(1, 2, figsize=(max(18, n_ev * 2.2), 6))
@@ -910,10 +962,10 @@ city_labels  = [f"{c['name']}\n{c['region']}" for c in CITIES]
 event_labels = [e["name"] for e in PLOT_EVENTS]
 
 for ax_idx, (metric_key, title, cbar_label) in enumerate([
-    ("capture_rate",    "Capture rate\n% of detected flooding inside NOAH Medium+High zones",
-     "Fraction of SAR flood in NOAH Med+High"),
-    ("active_hit_rate", "Hit rate\n% of NOAH Medium+High cells detected as flooded",
-     "Fraction of NOAH Med+High cells detected"),
+    ("capture_rate",    "Observed-flood recall\n% of detected flooding inside NOAH hazard",
+     "Fraction of detected flood in NOAH hazard"),
+    ("hazard_hit_rate", "Hazard hit rate\n% of NOAH hazard cells detected as flooded",
+     "Fraction of NOAH hazard cells detected"),
 ]):
     ax = axes2[ax_idx]
 
@@ -959,8 +1011,9 @@ for ax_idx, (metric_key, title, cbar_label) in enumerate([
 
 fig2.text(
     0.5, -0.02,
-    "Bold = city is a primary impact zone for that typhoon. "
+    "Bold = city is a primary impact zone for that flood event. "
     "Grey = fewer than 20 detected cells or no NOAH data available. "
+    "NOAH hazard = Low + Medium + High. "
     "Source: AI4G Sentinel-1 (2014–2024) + PhilSA SAR (2022–2026) union vs NOAH 5-yr hazard.",
     ha="center", fontsize=8, color="#555", style="italic",
 )
@@ -971,8 +1024,206 @@ fig2.savefig(p2, dpi=150, bbox_inches="tight")
 plt.close(fig2)
 print(f"  Saved → {p2}")
 
+
+# ===========================================================================
+# Figure 3 — Source-specific event heatmaps
+# ===========================================================================
+selected_summary = summary_df[summary_df["event"].isin(PLOT_EVENT_SLUGS)].copy()
+event_rank = {e["slug"]: i for i, e in enumerate(PLOT_EVENTS)}
+city_rank = {c["name"]: i for i, c in enumerate(CITIES)}
+selected_summary["event_rank"] = selected_summary["event"].map(event_rank)
+selected_summary["city_rank"] = selected_summary["city"].map(city_rank)
+selected_summary = selected_summary.sort_values(["event_rank", "city_rank"])
+
+all_source_shares = []
+for meta in SOURCE_META:
+    src = meta["key"]
+    avail_col = f"{src}_available"
+    flooded_col = f"n_flooded_{src}"
+    valid = selected_summary[avail_col].fillna(False)
+    shares = selected_summary.loc[valid, flooded_col] / selected_summary.loc[valid, "n_city_cells"]
+    all_source_shares.extend(shares.tolist())
+src_vmax = max(all_source_shares) if all_source_shares else 1.0
+src_vmax = max(src_vmax, 0.01)
+
+fig3, axes3 = plt.subplots(1, 3, figsize=(25, 7), sharey=True)
+fig3.patch.set_facecolor("#F7F7F7")
+fig3.suptitle(
+    "Event-Specific Flood Occurrence by Satellite Source Across the Validation City Buffers",
+    fontsize=13, fontweight="bold",
+)
+
+for ax_idx, meta in enumerate(SOURCE_META):
+    src = meta["key"]
+    ax = axes3[ax_idx]
+    cmap = plt.get_cmap(meta["cmap"]).copy()
+    cmap.set_bad("#DCDCDC")
+
+    flooded_col = f"n_flooded_{src}"
+    avail_col = f"{src}_available"
+    mat = np.full((len(PLOT_EVENTS), len(CITIES)), np.nan)
+
+    for ei, event in enumerate(PLOT_EVENTS):
+        for ci, city in enumerate(CITIES):
+            row = selected_summary[
+                (selected_summary["event"] == event["slug"]) &
+                (selected_summary["city"] == city["name"])
+            ]
+            if row.empty:
+                continue
+            row = row.iloc[0]
+            if not bool(row[avail_col]):
+                continue
+            mat[ei, ci] = float(row[flooded_col]) / float(row["n_city_cells"]) if row["n_city_cells"] > 0 else np.nan
+
+    im = ax.imshow(mat, aspect="auto", cmap=cmap, vmin=0, vmax=src_vmax, interpolation="nearest")
+    ax.set_xticks(range(len(CITIES)))
+    ax.set_xticklabels(city_labels, fontsize=8, rotation=25, ha="right")
+    ax.set_yticks(range(len(PLOT_EVENTS)))
+    ax.set_yticklabels(event_labels, fontsize=9)
+    ax.set_title(
+        f"{meta['label']}\nDetected flooded area as share of city buffer",
+        fontsize=10, fontweight="bold", pad=8,
+    )
+
+    for ei in range(len(PLOT_EVENTS)):
+        for ci in range(len(CITIES)):
+            val = mat[ei, ci]
+            row = selected_summary[
+                (selected_summary["event"] == PLOT_EVENTS[ei]["slug"]) &
+                (selected_summary["city"] == CITIES[ci]["name"])
+            ]
+            if row.empty:
+                continue
+            row = row.iloc[0]
+            is_primary = bool(row["is_primary"])
+            fw = "bold" if is_primary else "normal"
+            if np.isnan(val):
+                txt = "—"
+                col = "#888888"
+            else:
+                txt = f"{val:.0%}" if val > 0 else "0%"
+                col = "white" if val > src_vmax * 0.55 else "#222222"
+            ax.text(ci, ei, txt, ha="center", va="center", fontsize=8, color=col, fontweight=fw)
+
+    plt.colorbar(im, ax=ax, shrink=0.75, label="Flooded share of city buffer")
+
+fig3.text(
+    0.5, -0.02,
+    "Rows = selected events from Figure 1. Columns = the same 10 city buffers. "
+    "Values show detected flooded area divided by city-buffer area. "
+    "Grey = source not applicable in that event window. Bold = primary impact city for that event.",
+    ha="center", fontsize=8, color="#555", style="italic",
+)
+
+fig3.tight_layout()
+p3 = os.path.join(OUT_DIR, "noah_event_03_source_heatmaps.png")
+p3_pdf = os.path.join(OUT_DIR, "noah_event_03_source_heatmaps.pdf")
+fig3.savefig(p3, dpi=150, bbox_inches="tight")
+fig3.savefig(p3_pdf, bbox_inches="tight")
+plt.close(fig3)
+print(f"  Saved → {p3}")
+print(f"  Saved → {p3_pdf}")
+
+
+# ===========================================================================
+# Figure 4 — Pooled source scatter vs NOAH hazard area
+# ===========================================================================
+scatter_rows = []
+for _, row in selected_summary.iterrows():
+    if not bool(row["has_noah"]) or int(row["n_noah_any_cells"]) <= 0:
+        continue
+    noah_area_km2 = float(row["n_noah_any_cells"]) * CELL_AREA_KM2
+    for meta in SOURCE_META:
+        src = meta["key"]
+        if not bool(row[f"{src}_available"]):
+            continue
+        flooded_cells = int(row[f"n_flooded_{src}"])
+        if flooded_cells <= 0:
+            continue
+        overlap_cells = int(row[f"n_flooded_{src}_in_noah_any"])
+        scatter_rows.append({
+            "event": row["event"],
+            "event_name": row["event_name"],
+            "city": row["city"],
+            "region": row["region"],
+            "is_primary": bool(row["is_primary"]),
+            "source": meta["label"],
+            "source_key": src,
+            "noah_hazard_area_km2": noah_area_km2,
+            "flooded_area_km2": flooded_cells * CELL_AREA_KM2,
+            "flooded_in_noah_area_km2": overlap_cells * CELL_AREA_KM2,
+        })
+
+scatter_df = pd.DataFrame(scatter_rows)
+scatter_csv = os.path.join(OUT_DIR, "noah_event_source_scatter_points.csv")
+scatter_df.to_csv(scatter_csv, index=False)
+print(f"  Saved → {scatter_csv}")
+
+fig4, ax4 = plt.subplots(figsize=(12, 8))
+fig4.patch.set_facecolor("#F7F7F7")
+ax4.set_facecolor("white")
+
+if not scatter_df.empty:
+    max_xy = max(scatter_df["noah_hazard_area_km2"].max(), scatter_df["flooded_area_km2"].max())
+    for meta in SOURCE_META:
+        sub = scatter_df[scatter_df["source_key"] == meta["key"]].copy()
+        if sub.empty:
+            continue
+        size = 28 + 26 * np.sqrt(sub["flooded_in_noah_area_km2"].clip(lower=0))
+        ax4.scatter(
+            sub["noah_hazard_area_km2"],
+            sub["flooded_area_km2"],
+            s=size,
+            c=meta["color"],
+            alpha=0.62,
+            edgecolors="white",
+            linewidths=0.7,
+            label=meta["label"],
+        )
+    ax4.plot([0, max_xy], [0, max_xy], linestyle="--", color="#999999", linewidth=1.0, alpha=0.8)
+
+ax4.set_title(
+    "Observed Flooded Area vs NOAH Hazard Area Across Events, Cities, and Sources",
+    fontsize=13, fontweight="bold", pad=10,
+)
+ax4.set_xlabel("NOAH hazard area in city buffer (km²)", fontsize=11, fontweight="bold")
+ax4.set_ylabel("Source-detected flooded area during event (km²)", fontsize=11, fontweight="bold")
+ax4.grid(alpha=0.25, linestyle="--")
+source_handles, source_labels = ax4.get_legend_handles_labels()
+leg1 = ax4.legend(source_handles, source_labels, title="Source", loc="upper left", framealpha=0.92)
+ax4.add_artist(leg1)
+
+size_levels = [2, 10, 30]
+size_handles = [
+    plt.scatter([], [], s=28 + 26 * np.sqrt(v), color="#999999", alpha=0.45, edgecolors="white", linewidths=0.7)
+    for v in size_levels
+]
+size_labels = [f"{v:.0f} km² inside NOAH" for v in size_levels]
+leg2 = ax4.legend(size_handles, size_labels, title="Point size", loc="lower right", framealpha=0.92)
+ax4.add_artist(leg2)
+
+fig4.text(
+    0.5, -0.02,
+    "Each point = one source × city × selected-event observation with non-zero detected flooding. "
+    "Point size = flooded area that falls inside NOAH hazard. "
+    "Dashed line = equal NOAH-hazard area and observed flooded area.",
+    ha="center", fontsize=8, color="#555", style="italic",
+)
+
+fig4.tight_layout()
+p4 = os.path.join(OUT_DIR, "noah_event_04_source_scatter.png")
+p4_pdf = os.path.join(OUT_DIR, "noah_event_04_source_scatter.pdf")
+fig4.savefig(p4, dpi=150, bbox_inches="tight")
+fig4.savefig(p4_pdf, bbox_inches="tight")
+plt.close(fig4)
+print(f"  Saved → {p4}")
+print(f"  Saved → {p4_pdf}")
+
 print("\n" + "=" * 72)
 print("DONE")
 print(f"  {p1}")
 print(f"  {p2}")
+print(f"  {p3}")
+print(f"  {p4}")
 print(f"  {csv_path}")

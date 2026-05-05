@@ -83,7 +83,7 @@ CITIES = [
     {"name": "Cagayan de Oro", "slug": "cagayan_de_oro", "lat": 8.4772,  "lng": 124.6459,
      "radius_m": 12_000, "noah_province": "Misamis Oriental",    "region": "Northern Mindanao"},
     {"name": "Butuan",         "slug": "butuan",         "lat": 8.9515,  "lng": 125.5277,
-     "radius_m": 10_000, "noah_province": None,                  "region": "Caraga"},
+     "radius_m": 10_000, "noah_province": "Agusan del Norte",    "region": "Caraga"},
     {"name": "Tuguegarao",     "slug": "tuguegarao",     "lat": 17.6158, "lng": 121.7229,
      "radius_m": 10_000, "noah_province": "Cagayan",             "region": "Cagayan Valley"},
     {"name": "Ilagan",         "slug": "ilagan",         "lat": 17.1485, "lng": 121.8892,
@@ -425,7 +425,7 @@ for city in CITIES:
             noah = noah.set_crs(epsg=4326)
         if noah.crs.to_epsg() != UTM:
             noah = noah.to_crs(epsg=UTM)
-        noah["Var"] = pd.to_numeric(noah["Var"], errors="coerce").fillna(0).astype(int)
+        noah["Var"] = pd.to_numeric(noah["Var"], errors="coerce").fillna(0).clip(lower=0).astype(int)
         noah = gpd.clip(noah[["Var", "geometry"]], buf)
         noah = noah[~noah.is_empty].copy()
     else:

@@ -1,0 +1,4 @@
+,active_cells_sat_gap_share,active_cells_with_hot_philsa_share,active_cells_with_hot_groundsource_share,philsa_spearman_noah_vs_count,groundsource_spearman_noah_vs_score
+urban_share,0.49999999999999994,-0.49999999999999994,0.7,-0.49999999999999994,0.7
+noah_active_share,-0.7,0.7,-0.39999999999999997,0.7,-0.6
+noah_active_urban_share,0.7999999999999999,-0.7999999999999999,0.8999999999999998,-0.7999999999999999,0.8999999999999998

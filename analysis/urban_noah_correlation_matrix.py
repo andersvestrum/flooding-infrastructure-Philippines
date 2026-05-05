@@ -13,9 +13,13 @@ Outputs
   output/urban_bias/urban_noah_correlation_citylevel.csv
   output/urban_bias/urban_noah_correlation_citylevel.png
   output/urban_bias/urban_noah_correlation_citylevel.pdf
+  output/urban_bias/urban_noah_correlation_citylevel_clear.png
+  output/urban_bias/urban_noah_correlation_citylevel_clear.pdf
   output/urban_bias/urban_noah_correlation_groundsource.csv
   output/urban_bias/urban_noah_correlation_groundsource.png
   output/urban_bias/urban_noah_correlation_groundsource.pdf
+  output/urban_bias/urban_noah_correlation_groundsource_clear.png
+  output/urban_bias/urban_noah_correlation_groundsource_clear.pdf
 """
 
 from pathlib import Path
@@ -56,13 +60,13 @@ GHSL_CLASS_MAP = {
 
 CITY_LABELS = {
     "urban_share": "Urban share",
-    "noah_active_share": "NOAH active share",
-    "noah_active_urban_share": "Urban share of NOAH active",
-    "philsa_any_in_noah_active_share": "PhilSA hit in NOAH",
-    "ai4g_any_in_noah_active_share": "AI4G hit in NOAH",
-    "satellite_any_in_noah_active_share": "Any satellite hit in NOAH",
-    "event_weighted_noah_recall": "Observed flood recall",
-    "philsa_mean_freq_noah_active": "PhilSA freq in NOAH",
+    "noah_any_share": "NOAH hazard share",
+    "noah_any_urban_share": "Urban share of NOAH hazard",
+    "philsa_any_in_noah_any_share": "PhilSA hit in NOAH hazard",
+    "ai4g_any_in_noah_any_share": "AI4G hit in NOAH hazard",
+    "satellite_any_in_noah_any_share": "Any satellite hit in NOAH hazard",
+    "event_weighted_noah_any_recall": "Observed flood recall",
+    "philsa_mean_freq_noah_any": "PhilSA freq in NOAH hazard",
 }
 
 GS_LABELS = {
@@ -74,6 +78,33 @@ GS_LABELS = {
     "active_cells_with_hot_groundsource_share": "GS hotspot",
     "philsa_spearman_noah_vs_count": "PhilSA ~ NOAH rho",
     "groundsource_spearman_noah_vs_score": "GS ~ NOAH rho",
+}
+
+CLEAR_CITY_DRIVERS = {
+    "urban_share": "Urban share\nof city buffer",
+    "noah_any_share": "NOAH share\nof city buffer",
+    "noah_any_urban_share": "Urban share of\nNOAH cells",
+}
+
+CLEAR_CITY_OUTCOMES = {
+    "philsa_any_in_noah_any_share": "PhilSA recall\nin NOAH",
+    "ai4g_any_in_noah_any_share": "AI4G recall\nin NOAH",
+    "satellite_any_in_noah_any_share": "Any satellite recall\nin NOAH",
+    "event_weighted_noah_any_recall": "Event recall\nin NOAH",
+}
+
+CLEAR_GS_DRIVERS = {
+    "urban_share": "Urban share\nof city buffer",
+    "noah_active_share": "NOAH Med+High\nshare of city buffer",
+    "noah_active_urban_share": "Urban share of\nNOAH Med+High cells",
+}
+
+CLEAR_GS_OUTCOMES = {
+    "active_cells_sat_gap_share": "Groundsource yes\nPhilSA no",
+    "active_cells_with_hot_philsa_share": "PhilSA hotspot\ninside NOAH",
+    "active_cells_with_hot_groundsource_share": "Groundsource hotspot\ninside NOAH",
+    "philsa_spearman_noah_vs_count": "PhilSA-NOAH\nrank match",
+    "groundsource_spearman_noah_vs_score": "Groundsource-NOAH\nrank match",
 }
 
 
@@ -147,15 +178,22 @@ def _city_metrics(cells):
                 "noah_any_share": float(noah_any.mean()),
                 "noah_active_share": float(noah_active.mean()),
                 "noah_high_share": float(noah_high.mean()),
+                "urban_noah_any_share": float((urban & noah_any).mean()),
+                "noah_any_urban_share": _safe_share((urban & noah_any).sum(), noah_any.sum()),
                 "urban_noah_active_share": float((urban & noah_active).mean()),
                 "noah_active_urban_share": _safe_share((urban & noah_active).sum(), noah_active.sum()),
                 "philsa_any_share": float(philsa_any.mean()),
+                "philsa_any_in_noah_any_share": _safe_share((philsa_any & noah_any).sum(), noah_any.sum()),
+                "philsa_mean_freq_noah_any": float(s.loc[noah_any, "philsa_freq"].mean()) if noah_any.any() else np.nan,
                 "philsa_any_in_noah_active_share": _safe_share((philsa_any & noah_active).sum(), noah_active.sum()),
                 "philsa_mean_freq_noah_active": float(s.loc[noah_active, "philsa_freq"].mean()) if noah_active.any() else np.nan,
                 "ai4g_any_share": float(ai4g_any.mean()),
+                "ai4g_any_in_noah_any_share": _safe_share((ai4g_any & noah_any).sum(), noah_any.sum()),
+                "ai4g_mean_freq_noah_any": float(s.loc[noah_any, "ai4g_freq"].mean()) if noah_any.any() else np.nan,
                 "ai4g_any_in_noah_active_share": _safe_share((ai4g_any & noah_active).sum(), noah_active.sum()),
                 "ai4g_mean_freq_noah_active": float(s.loc[noah_active, "ai4g_freq"].mean()) if noah_active.any() else np.nan,
                 "satellite_any_share": float(satellite_any.mean()),
+                "satellite_any_in_noah_any_share": _safe_share((satellite_any & noah_any).sum(), noah_any.sum()),
                 "satellite_any_in_noah_active_share": _safe_share((satellite_any & noah_active).sum(), noah_active.sum()),
             }
         )
@@ -165,18 +203,21 @@ def _city_metrics(cells):
 
 def _event_metrics():
     if not EVENT_SUMMARY.exists():
-        return pd.DataFrame(columns=["city", "event_weighted_noah_recall"])
+        return pd.DataFrame(columns=["city", "event_weighted_noah_any_recall"])
     events = pd.read_csv(EVENT_SUMMARY)
     events = events[events["n_flooded_total"] >= 20].copy()
     rows = []
     for city, sub in events.groupby("city"):
         n_flood = sub["n_flooded_total"].sum()
+        n_inside_any = (sub["n_in_noah_low"] + sub["n_in_noah_med"] + sub["n_in_noah_high"]).sum()
         n_inside = sub["n_flooded_in_noah_active"].sum()
         rows.append(
             {
                 "city": city,
                 "event_flooded_cells_total": int(n_flood),
+                "event_flooded_cells_in_noah_any": int(n_inside_any),
                 "event_flooded_cells_in_noah_active": int(n_inside),
+                "event_weighted_noah_any_recall": _safe_share(n_inside_any, n_flood),
                 "event_weighted_noah_recall": _safe_share(n_inside, n_flood),
             }
         )
@@ -185,6 +226,18 @@ def _event_metrics():
 
 def _spearman(df, columns):
     return df[columns].corr(method="spearman", min_periods=3)
+
+
+def _rect_spearman(df, row_cols, col_cols):
+    corr = pd.DataFrame(index=row_cols, columns=col_cols, dtype=float)
+    for row_col in row_cols:
+        for col_col in col_cols:
+            pair = df[[row_col, col_col]].dropna()
+            if len(pair) < 3:
+                corr.loc[row_col, col_col] = np.nan
+            else:
+                corr.loc[row_col, col_col] = pair[row_col].corr(pair[col_col], method="spearman")
+    return corr
 
 
 def _plot_corr(corr, labels, title, subtitle, out_stem):
@@ -218,6 +271,58 @@ def _plot_corr(corr, labels, title, subtitle, out_stem):
     cbar.set_label("Spearman correlation", fontsize=9)
     ax.grid(False)
     fig.tight_layout(rect=[0, 0, 1, 0.91])
+
+    png = OUT_DIR / f"{out_stem}.png"
+    pdf = OUT_DIR / f"{out_stem}.pdf"
+    fig.savefig(png, dpi=180, bbox_inches="tight")
+    fig.savefig(pdf, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved -> {png}")
+    print(f"Saved -> {pdf}")
+
+
+def _plot_rect_corr(corr, row_labels, col_labels, title, subtitle, note, out_stem):
+    row_names = [row_labels.get(col, col) for col in corr.index]
+    col_names = [col_labels.get(col, col) for col in corr.columns]
+    data = corr.values.astype(float)
+
+    fig_w = max(8.0, 1.75 * len(col_names) + 3.0)
+    fig_h = max(5.2, 0.85 * len(row_names) + 3.0)
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    fig.patch.set_facecolor("#F7F7F7")
+    ax.set_facecolor("white")
+
+    im = ax.imshow(data, vmin=-1, vmax=1, cmap="RdBu_r", aspect="auto")
+    ax.set_xticks(range(len(col_names)))
+    ax.set_xticklabels(col_names, rotation=0, ha="center", fontsize=9)
+    ax.set_yticks(range(len(row_names)))
+    ax.set_yticklabels(row_names, fontsize=9)
+
+    ax.set_xlabel("Validation / support outcome", fontsize=10, fontweight="bold", labelpad=14)
+    ax.set_ylabel("City-level condition", fontsize=10, fontweight="bold", labelpad=14)
+
+    for i in range(data.shape[0]):
+        for j in range(data.shape[1]):
+            val = data[i, j]
+            if np.isnan(val):
+                text = "NA"
+                color = "#555555"
+            else:
+                text = f"{val:+.2f}"
+                color = "white" if abs(val) > 0.55 else "#222222"
+            ax.text(j, i, text, ha="center", va="center", fontsize=9, color=color, fontweight="bold")
+
+    ax.set_xticks(np.arange(-0.5, len(col_names), 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, len(row_names), 1), minor=True)
+    ax.grid(which="minor", color="white", linewidth=2.0)
+    ax.tick_params(which="minor", bottom=False, left=False)
+
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=20)
+    fig.text(0.5, 0.925, subtitle, ha="center", fontsize=9, color="#555555")
+    fig.text(0.5, 0.035, note, ha="center", va="bottom", fontsize=8.5, color="#555555")
+    cbar = fig.colorbar(im, ax=ax, shrink=0.82, pad=0.03)
+    cbar.set_label("Spearman correlation", fontsize=9)
+    fig.tight_layout(rect=[0.03, 0.07, 0.98, 0.9])
 
     png = OUT_DIR / f"{out_stem}.png"
     pdf = OUT_DIR / f"{out_stem}.pdf"
@@ -263,6 +368,21 @@ def main():
         "City-level Spearman correlations across 10 study-city buffers; interpret as exploratory, not causal.",
         "urban_noah_correlation_citylevel",
     )
+    city_driver_cols = [col for col in CLEAR_CITY_DRIVERS if col in metrics.columns]
+    city_outcome_cols = [col for col in CLEAR_CITY_OUTCOMES if col in metrics.columns]
+    city_clear_corr = _rect_spearman(metrics, city_driver_cols, city_outcome_cols)
+    city_clear_path = OUT_DIR / "urban_noah_correlation_citylevel_clear.csv"
+    city_clear_corr.to_csv(city_clear_path)
+    print(f"Saved -> {city_clear_path}")
+    _plot_rect_corr(
+        city_clear_corr,
+        CLEAR_CITY_DRIVERS,
+        CLEAR_CITY_OUTCOMES,
+        "Urbanized NOAH Hazard Areas Tend to Receive Weaker Independent Satellite Support",
+        "Main figure uses NOAH + GHSL urbanization + PhilSA + AI4G + event recall only. Red means higher row values tend to coincide with higher column values; blue means the opposite.",
+        "",
+        "urban_noah_correlation_citylevel_clear",
+    )
 
     gs_cols = [col for col in GS_LABELS if col in metrics.columns]
     gs_df = metrics.dropna(subset=["active_cells_sat_gap_share"]).copy()
@@ -276,6 +396,21 @@ def main():
         "Urbanisation and the Groundsource-vs-PhilSA Satellite Gap",
         "Groundsource-enhanced Spearman correlations across 5 city buffers; useful as directional evidence only.",
         "urban_noah_correlation_groundsource",
+    )
+    gs_driver_cols = [col for col in CLEAR_GS_DRIVERS if col in gs_df.columns]
+    gs_outcome_cols = [col for col in CLEAR_GS_OUTCOMES if col in gs_df.columns]
+    gs_clear_corr = _rect_spearman(gs_df, gs_driver_cols, gs_outcome_cols)
+    gs_clear_path = OUT_DIR / "urban_noah_correlation_groundsource_clear.csv"
+    gs_clear_corr.to_csv(gs_clear_path)
+    print(f"Saved -> {gs_clear_path}")
+    _plot_rect_corr(
+        gs_clear_corr,
+        CLEAR_GS_DRIVERS,
+        CLEAR_GS_OUTCOMES,
+        "Groundsource Suggests a Larger PhilSA Gap in More Urban NOAH Areas",
+        "Spearman correlations across the 5 city buffers with Groundsource data. Use as directional evidence only because n=5.",
+        "A positive Groundsource yes / PhilSA no correlation means the gap is larger in cities with higher row values; this is consistent with literature on urban flood under-detection from space.",
+        "urban_noah_correlation_groundsource_clear",
     )
 
 
