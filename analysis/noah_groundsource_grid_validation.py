@@ -124,7 +124,7 @@ def _load_noah_for_city(city, buf_utm):
         noah = noah.set_crs(4326)
     if noah.crs.to_epsg() != UTM:
         noah = noah.to_crs(epsg=UTM)
-    noah["Var"] = pd.to_numeric(noah["Var"], errors="coerce").fillna(0).astype(int)
+    noah["Var"] = pd.to_numeric(noah["Var"], errors="coerce").fillna(0).clip(lower=0).astype(int)
     noah = gpd.clip(noah[["Var", "geometry"]], buf_utm)
     return noah[~noah.is_empty].copy()
 
@@ -142,7 +142,7 @@ def _assign_noah(grid, noah):
     )
     max_var = joined.groupby("cell_id")["Var"].max()
     out = out.join(max_var.rename("assigned_var"), on="cell_id")
-    out["noah_class"] = out["assigned_var"].fillna(0).astype(int)
+    out["noah_class"] = out["assigned_var"].fillna(0).clip(lower=0).astype(int)
     out = out.drop(columns=["assigned_var"])
     return out
 
